@@ -103,7 +103,9 @@ function ScreenRecap({ onBack, tracks: propTracks, playlistUrl }) {
   const startTrack = (t) => {
     const a = audioRef.current; if (!a || !t) return;
     a.src = t.downloadUrl || '';
-    a.play().catch(() => {});
+    // Surface a playback failure (e.g. an old device that can't decode the file)
+    // instead of a silent dead button — tell the user download still works.
+    a.play().catch(() => ping('Can’t play here — tap ⬇ to download'));
     curRef.current = t.id; setCurrentId(t.id); setElapsed(0);
   };
   const playTrack = (t) => {

@@ -9,6 +9,7 @@ import {
   type DownloadTarget,
   type SongStore,
 } from "./songFiles.js";
+import { shouldTranscodeToAac, transcodeToAacM4a } from "./transcode.js";
 import { SupabaseSongStore } from "./supabaseSongStore.js";
 
 // Local-disk archive: audio file + a JSON metadata sidecar per song. The fallback
@@ -23,11 +24,24 @@ export class LocalSongStore implements SongStore {
     }
 
     await fs.mkdir(this.rootDir, { recursive: true });
-    const extension = audioExtension(sourceUrl, response.headers.get("content-type"));
+    const contentType = response.headers.get("content-type");
+    let bytes: Buffer = Buffer.from(await response.arrayBuffer());
+    let extension = audioExtension(sourceUrl, contentType);
+    // Match the Supabase path: Suno's Opus-in-MP4 won't play inline on older phones,
+    // so re-encode to AAC. Best-effort — keep the original if ffmpeg is unavailable.
+    if (shouldTranscodeToAac(contentType)) {
+      try {
+        bytes = await transcodeToAacM4a(bytes);
+        extension = ".m4a";
+        console.log(`[songs] ${song.id}: transcoded Opus → AAC (${bytes.length} bytes)`);
+      } catch (err) {
+        console.warn(`[songs] ${song.id}: transcode failed, storing original — ${(err as Error).message}`);
+      }
+    }
     const fileName = `${song.id}-${safeFilePart(song.title)}${extension}`;
     const filePath = path.join(this.rootDir, fileName);
     const tempPath = `${filePath}.partial`;
-    await fs.writeFile(tempPath, Buffer.from(await response.arrayBuffer()));
+    await fs.writeFile(tempPath, bytes);
     await fs.rename(tempPath, filePath);
 
     const saved: SavedSong = {

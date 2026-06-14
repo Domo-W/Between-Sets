@@ -13,6 +13,7 @@ import {
   type DownloadTarget,
   type SongStore,
 } from "./songFiles.js";
+import { shouldTranscodeToAac, transcodeToAacM4a } from "./transcode.js";
 
 const TABLE = "songs";
 
@@ -63,12 +64,26 @@ export class SupabaseSongStore implements SongStore {
       throw new Error(`audio download ${response.status}: ${(await response.text()).slice(0, 200)}`);
     }
     const contentType = response.headers.get("content-type");
-    const ext = audioExtension(sourceUrl, contentType);
+    let bytes: Buffer = Buffer.from(await response.arrayBuffer());
+    let ext = audioExtension(sourceUrl, contentType);
+    let uploadType = contentType || audioContentType(ext);
+    // Suno ships Opus-in-MP4, which older phones can't play inline. Transcode to AAC
+    // so the recap plays on every device. Best-effort: if ffmpeg fails, store the
+    // original so the song is never lost (it still downloads + plays on most devices).
+    if (shouldTranscodeToAac(contentType)) {
+      try {
+        bytes = await transcodeToAacM4a(bytes);
+        ext = ".m4a";
+        uploadType = "audio/mp4";
+        console.log(`[songs] ${song.id}: transcoded Opus → AAC (${bytes.length} bytes)`);
+      } catch (err) {
+        console.warn(`[songs] ${song.id}: transcode failed, storing original — ${(err as Error).message}`);
+      }
+    }
     const fileName = `${song.id}-${safeFilePart(song.title)}${ext}`;
-    const bytes = Buffer.from(await response.arrayBuffer());
 
     const upload = await this.client.storage.from(this.bucket).upload(fileName, bytes, {
-      contentType: contentType || audioContentType(ext),
+      contentType: uploadType,
       upsert: true,
     });
     if (upload.error) throw new Error(`storage upload: ${upload.error.message}`);
