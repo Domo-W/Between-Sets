@@ -5,10 +5,10 @@
 // tug-of-war. Names + intents are drawn WITHOUT repeats until the pool is
 // exhausted, so repeated solo tests don't feel stale.
 
-import { broadcast } from "./bus.js";
-import * as participants from "./participants.js";
-import * as room from "./room.js";
-import * as tug from "./tug.js";
+import type { ServerMsg } from "./types.js";
+import type { Participants } from "./participants.js";
+import type { Room } from "./room.js";
+import type { Tug } from "./tug.js";
 
 const NAMES = [
   "Maya", "Theo", "Priya", "Marcus", "Lena", "Andre", "Sofia", "Jules", "Nico", "Tash",
@@ -30,12 +30,7 @@ const INTENTS = [
   "I want to set the room on fire",
 ];
 
-interface Sim { key: string; name: string; pid: string | null; bias: number; intent: string }
-
-let sims: Sim[] = [];
-let seq = 0;
-let nameBag: string[] = [];
-let intentBag: string[] = [];
+interface SimPlayer { key: string; name: string; pid: string | null; bias: number; intent: string }
 
 // Draw without repeats until the bag empties, then refill — so a solo tester
 // running several sessions doesn't keep seeing the same names/prompts.
@@ -51,64 +46,79 @@ function draw(bag: string[], source: string[]): string {
   }
   return bag.pop()!;
 }
-const freshName = () => draw(nameBag, NAMES);
-const freshIntent = () => draw(intentBag, INTENTS);
 
-/** How many sims are currently in the room. */
-export function count(): number {
-  return sims.length;
-}
+export class Sim {
+  private sims: SimPlayer[] = [];
+  private seq = 0;
+  private nameBag: string[] = [];
+  private intentBag: string[] = [];
 
-/** Add `n` simulated players: room members + participants (name + intent), and
- *  put their names on the stage cloud. Returns the new count. */
-export function add(n: number): number {
-  for (let i = 0; i < n; i++) {
-    const name = freshName();
-    const key = `sim-${++seq}`;
-    const pid = participants.join(name, true);
-    const intent = freshIntent();
-    participants.setAnswer(pid, intent);
-    room.addSimMember(key, name);
-    sims.push({ key, name, pid, bias: 0.35 + Math.random() * 0.3, intent });
-    broadcast({ type: "name", name });
+  constructor(private readonly deps: {
+    broadcast: (msg: ServerMsg) => void;
+    participants: Participants;
+    room: Room;
+    tug: Tug;
+  }) {}
+
+  private freshName(): string { return draw(this.nameBag, NAMES); }
+  private freshIntent(): string { return draw(this.intentBag, INTENTS); }
+
+  /** How many sims are currently in the room. */
+  count(): number {
+    return this.sims.length;
   }
-  broadcast({ type: "room_state", ...room.snapshot() });
-  return sims.length;
-}
 
-/** Round boundary re-join: participants were wiped, so re-register each sim with
- *  a FRESH intent (kept varied round to round) and re-show their name. */
-export function rejoinForRound(): void {
-  for (const s of sims) {
-    s.pid = participants.join(s.name, true);
-    s.intent = freshIntent();
-    participants.setAnswer(s.pid, s.intent);
-    broadcast({ type: "name", name: s.name });
+  /** Add `n` simulated players: room members + participants (name + intent), and
+   *  put their names on the stage cloud. Returns the new count. */
+  add(n: number): number {
+    for (let i = 0; i < n; i++) {
+      const name = this.freshName();
+      const key = `sim-${++this.seq}`;
+      const pid = this.deps.participants.join(name, true);
+      const intent = this.freshIntent();
+      this.deps.participants.setAnswer(pid, intent);
+      this.deps.room.addSimMember(key, name);
+      this.sims.push({ key, name, pid, bias: 0.35 + Math.random() * 0.3, intent });
+      this.deps.broadcast({ type: "name", name });
+    }
+    this.deps.broadcast({ type: "room_state", ...this.deps.room.snapshot() });
+    return this.sims.length;
   }
-}
 
-/** Post the sims' intents onto the stage's gather feed, staggered like real
- *  people typing — called once gather is live so they don't get cleared by the
- *  new-round wipe. Mirrors what real phones do via handleAnswer. */
-export function postIntentsToGather(): void {
-  for (const s of sims) {
-    const name = s.name;
-    const text = s.intent;
-    setTimeout(() => broadcast({ type: "intent", name, text }), 800 + Math.random() * 6000);
+  /** Round boundary re-join: participants were wiped, so re-register each sim with
+   *  a FRESH intent (kept varied round to round) and re-show their name. */
+  rejoinForRound(): void {
+    for (const s of this.sims) {
+      s.pid = this.deps.participants.join(s.name, true);
+      s.intent = this.freshIntent();
+      this.deps.participants.setAnswer(s.pid, s.intent);
+      this.deps.broadcast({ type: "name", name: s.name });
+    }
   }
-}
 
-/** One tug-of-war vote tick for the sims (called during the collecting phase). */
-export function voteTick(): void {
-  for (const s of sims) {
-    if (s.pid) tug.applyPull(s.pid, Math.random() < s.bias ? "A" : "B", 0.6);
+  /** Post the sims' intents onto the stage's gather feed, staggered like real
+   *  people typing — called once gather is live so they don't get cleared by the
+   *  new-round wipe. Mirrors what real phones do via handleAnswer. */
+  postIntentsToGather(): void {
+    for (const s of this.sims) {
+      const name = s.name;
+      const text = s.intent;
+      setTimeout(() => this.deps.broadcast({ type: "intent", name, text }), 800 + Math.random() * 6000);
+    }
   }
-}
 
-/** Forget all sims (on show reset). */
-export function reset(): void {
-  sims = [];
-  seq = 0;
-  nameBag = [];
-  intentBag = [];
+  /** One tug-of-war vote tick for the sims (called during the collecting phase). */
+  voteTick(): void {
+    for (const s of this.sims) {
+      if (s.pid) this.deps.tug.applyPull(s.pid, Math.random() < s.bias ? "A" : "B", 0.6);
+    }
+  }
+
+  /** Forget all sims (on show reset). */
+  reset(): void {
+    this.sims = [];
+    this.seq = 0;
+    this.nameBag = [];
+    this.intentBag = [];
+  }
 }

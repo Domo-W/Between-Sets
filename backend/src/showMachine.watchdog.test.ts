@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 // Keep generation inert: an empty round now auto-advances with a house seed, which
 // would otherwise call the real Anthropic/Suno APIs when timers run far enough.
@@ -19,15 +19,35 @@ vi.mock("./songStore.js", () => ({
   },
 }));
 
-// showMachine starts intervals at module load — import under fake timers so the
+// showMachine starts intervals at construction — construct under fake timers so the
 // watchdog (and the snapshot loops) run on the controlled clock.
 vi.useFakeTimers();
-const show = await import("./showMachine.js");
+
+import { ShowMachine } from "./showMachine.js";
+import { Tug } from "./tug.js";
+import { Participants } from "./participants.js";
+import { Vibes } from "./vibes.js";
+import { Room } from "./room.js";
+import { Sim } from "./sim.js";
+
+function makeShow() {
+  const sent: any[] = [];
+  const broadcast = (m: any) => sent.push(m);
+  const tug = new Tug(), participants = new Participants(), vibes = new Vibes();
+  const room = new Room(broadcast);
+  const sim = new Sim({ broadcast, participants, room, tug });
+  const show = new ShowMachine({ broadcast, room, sim, participants, vibes, tug });
+  return { show, sent, tug, participants, vibes, room, sim };
+}
 
 describe("stale-show watchdog", () => {
+  let show: ShowMachine;
   beforeEach(() => {
-    show.reset();
+    show = makeShow().show;
     vi.clearAllTimers();
+  });
+  afterEach(() => {
+    show.stop();
   });
 
   it("auto-resets a started show whose first track never reports playing", () => {
