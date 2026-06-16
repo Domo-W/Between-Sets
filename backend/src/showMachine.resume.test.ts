@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 // Keep generation inert so the auto-advance path doesn't hit the real APIs.
 const { craftSongPrompt } = vi.hoisted(() => ({
@@ -21,14 +21,34 @@ vi.mock("./songStore.js", () => ({
   },
 }));
 
-// showMachine starts intervals at module load — import under fake timers.
+// showMachine starts intervals at construction — construct under fake timers.
 vi.useFakeTimers();
-const show = await import("./showMachine.js");
+
+import { ShowMachine } from "./showMachine.js";
+import { Tug } from "./tug.js";
+import { Participants } from "./participants.js";
+import { Vibes } from "./vibes.js";
+import { Room } from "./room.js";
+import { Sim } from "./sim.js";
+
+function makeShow() {
+  const sent: any[] = [];
+  const broadcast = (m: any) => sent.push(m);
+  const tug = new Tug(), participants = new Participants(), vibes = new Vibes();
+  const room = new Room(broadcast);
+  const sim = new Sim({ broadcast, participants, room, tug });
+  const show = new ShowMachine({ broadcast, room, sim, participants, vibes, tug });
+  return { show, sent, tug, participants, vibes, room, sim };
+}
 
 describe("live-track re-seed (stage reload recovery)", () => {
+  let show: ShowMachine;
   beforeEach(() => {
-    show.reset();
+    show = makeShow().show;
     vi.clearAllTimers();
+  });
+  afterEach(() => {
+    show.stop();
   });
 
   it("exposes no live track in the idle lobby", () => {
@@ -58,10 +78,14 @@ describe("live-track re-seed (stage reload recovery)", () => {
 });
 
 describe("empty-round auto-advance (Jackbox-style: never hard-stop)", () => {
+  let show: ShowMachine;
   beforeEach(() => {
-    show.reset();
+    show = makeShow().show;
     vi.clearAllTimers();
     craftSongPrompt.mockClear();
+  });
+  afterEach(() => {
+    show.stop();
   });
 
   it("auto-advances with a house seed after the grace window when nobody submits", async () => {
