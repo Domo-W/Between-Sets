@@ -7,30 +7,12 @@ import archiver from "archiver";
 import QRCode from "qrcode";
 import { WebSocketServer, WebSocket } from "ws";
 import { CONFIG } from "./config.js";
-import { setSender, broadcast } from "./bus.js";
-import {
-  startShow,
-  onPlaying,
-  applyConfig,
-  skip,
-  hold,
-  resume,
-  reset,
-  endShow,
-  endVote,
-  handlePull,
-  handleAnswer,
-  currentShowState,
-  currentRecap,
-  currentSetSongs,
-  currentPlayingSong,
-} from "./showMachine.js";
-import { join, remove, names } from "./participants.js";
-import * as vibes from "./vibes.js";
-import * as room from "./room.js";
-import * as sim from "./sim.js";
+import { SessionRegistry } from "./sessionRegistry.js";
+import type { Session } from "./session.js";
 import { songStore } from "./songStore.js";
 import type { ClientMsg, ServerMsg, SavedSong } from "./types.js";
+
+const registry = new SessionRegistry();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const frontendDir = path.resolve(__dirname, "../../frontend");
@@ -75,7 +57,7 @@ app.get("/api/songs", async (_req, res) => {
 });
 // Only the CURRENT set's songs (the dashboard Session Setlist) — cleared on
 // reset/start, so a new set starts with an empty list.
-app.get("/api/session-songs", (_req, res) => res.json({ songs: currentSetSongs() }));
+app.get("/api/session-songs", (_req, res) => res.json({ songs: registry.only().show.currentSetSongs() }));
 // A persistent playlist for ONE set, so a "save the playlist" link/QR still works
 // after the show ends (and after later sessions). The setId is the epoch-ms time
 // of the set's first song; we cluster the archive the same way the dashboard does
@@ -180,7 +162,7 @@ app.delete("/api/songs/:id", async (req, res) => {
       res.status(404).json({ error: "Song not found." });
       return;
     }
-    broadcast({ type: "song_deleted", id: req.params.id });
+    registry.only().broadcast({ type: "song_deleted", id: req.params.id });
     res.json({ ok: true, id: req.params.id });
   } catch (err) {
     console.error("[songs] delete failed:", (err as Error).message);
@@ -195,7 +177,7 @@ app.get("/qr", async (req, res) => {
       // "save the playlist" QR → the persistent recap for this set.
       url += (url.includes("?") ? "&" : "?") + "set=" + encodeURIComponent(set);
     } else {
-      const c = room.snapshot().code;
+      const c = registry.only().room.snapshot().code;
       if (c) url += (url.includes("?") ? "&" : "?") + "code=" + encodeURIComponent(c);
     }
     const svg = await QRCode.toString(url, { type: "svg", margin: 1, color: { dark: "#0A0A0F", light: "#FFFFFF" } });
@@ -214,14 +196,6 @@ let playbackState: Extract<ServerMsg, { type: "playback_state" }> = {
   canSkip: false,
 };
 
-// Broadcast helper wired into the bus so showMachine can reach all clients.
-setSender((msg: ServerMsg) => {
-  const data = JSON.stringify(msg);
-  for (const client of wss.clients) {
-    if (client.readyState === WebSocket.OPEN) client.send(data);
-  }
-});
-
 // Track which participantId each socket owns, for crowdSize + disconnect cleanup.
 const wsParticipant = new WeakMap<WebSocket, string>();
 let wsSeq = 0; // stable per-socket id for the vibe tally (distinct phones per option)
@@ -232,32 +206,34 @@ const wsByKey = new Map<string, WebSocket>();
 const MIN_PLAYERS = 2; // a show needs at least this many in the room to start
 
 // Tally helpers shared by the vibe message + disconnect paths.
-const vibeTallyMsg = (): ServerMsg => {
-  const t = vibes.tally();
+function vibeTallyMsg(session: Session): ServerMsg {
+  const t = session.vibes.tally();
   return { type: "vibe_tally", counts: t.counts, total: t.total };
-};
+}
 
 wss.on("connection", (ws) => {
+  const session = registry.only();
+  session.addSocket(ws);
   const socketId = ++wsSeq;
   const connKey = String(socketId);
   wsByKey.set(connKey, ws);
   console.log("[ws] client connected");
   // Seed the new client (e.g. a freshly-loaded stage) with the current names.
-  ws.send(JSON.stringify({ type: "names", names: names() } as ServerMsg));
+  ws.send(JSON.stringify({ type: "names", names: session.participants.names() } as ServerMsg));
   ws.send(JSON.stringify(playbackState));
-  ws.send(JSON.stringify({ type: "show_state", ...currentShowState() } as ServerMsg));
-  ws.send(JSON.stringify({ type: "room_state", ...room.snapshot() } as ServerMsg));
+  ws.send(JSON.stringify({ type: "show_state", ...session.show.currentShowState() } as ServerMsg));
+  ws.send(JSON.stringify({ type: "room_state", ...session.room.snapshot() } as ServerMsg));
   // Seed the current vibe poll (options + live tally) so a fresh phone renders it.
-  ws.send(JSON.stringify({ type: "vibe_options", cards: vibes.getCards() } as ServerMsg));
-  ws.send(JSON.stringify(vibeTallyMsg()));
+  ws.send(JSON.stringify({ type: "vibe_options", cards: session.vibes.getCards() } as ServerMsg));
+  ws.send(JSON.stringify(vibeTallyMsg(session)));
   // If the set has already ended, seed this fresh connection with the recap so a
   // phone scanning the end-of-set QR lands on the playlist, not the lobby.
-  const recap = currentRecap();
+  const recap = session.show.currentRecap();
   if (recap) ws.send(JSON.stringify({ type: "show_ended", songs: recap } as ServerMsg));
   // If a track is live right now, re-seed this connection with it so a stage that
   // reloaded mid-show resumes audio (and starts reporting `playing` so rounds
   // advance again) instead of sitting silent on whatever phase show_state reports.
-  const liveSong = currentPlayingSong();
+  const liveSong = session.show.currentPlayingSong();
   if (liveSong) ws.send(JSON.stringify({ type: "song_ready", song: liveSong } as ServerMsg));
 
   ws.on("message", (raw) => {
@@ -270,107 +246,107 @@ wss.on("connection", (ws) => {
 
     switch (msg.type) {
       case "join": {
-        const res = room.tryJoin(connKey, msg.name, msg.code, msg.hostToken);
+        const res = session.room.tryJoin(connKey, msg.name, msg.code, msg.hostToken);
         if (!res.ok) {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: "join_rejected", reason: res.reason } as ServerMsg));
           }
           break;
         }
-        const id = join(msg.name);
+        const id = session.participants.join(msg.name);
         wsParticipant.set(ws, id);
         const reply: ServerMsg = {
           type: "joined",
           participantId: id,
           isHost: res.isHost,
           hostToken: res.hostToken,
-          code: room.snapshot().code,
+          code: session.room.snapshot().code,
         };
         if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(reply));
         const nm = (msg.name || "").trim();
-        if (nm) broadcast({ type: "name", name: nm });
+        if (nm) session.broadcast({ type: "name", name: nm });
         break;
       }
       case "answer":
-        handleAnswer(msg.participantId, msg.text);
+        session.show.handleAnswer(msg.participantId, msg.text);
         break;
       case "pull":
-        handlePull(msg.participantId, msg.side, msg.impulse);
+        session.show.handlePull(msg.participantId, msg.side, msg.impulse);
         break;
       case "vibe":
-        vibes.recordPick(socketId, msg.index);
-        broadcast(vibeTallyMsg());
+        session.vibes.recordPick(socketId, msg.index);
+        session.broadcast(vibeTallyMsg(session));
         break;
       case "vibeCards":
-        vibes.setCards(msg.cards);
-        broadcast({ type: "vibe_options", cards: vibes.getCards() });
-        broadcast(vibeTallyMsg());
+        session.vibes.setCards(msg.cards);
+        session.broadcast({ type: "vibe_options", cards: session.vibes.getCards() });
+        session.broadcast(vibeTallyMsg(session));
         break;
       case "playing":
-        onPlaying(msg.id);
+        session.show.onPlaying(msg.id);
         break;
       case "start":
-        startShow(msg.opener);
+        session.show.startShow(msg.opener);
         break;
       case "create_room": {
-        const r = room.createRoom();
+        const r = session.room.createRoom();
         if (!r.ok && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: "join_rejected", reason: "busy" } as ServerMsg));
         }
         break;
       }
       case "host_start": {
-        const s = room.snapshot();
+        const s = session.room.snapshot();
         // A show needs at least MIN_PLAYERS in the room (host + ≥1 other). The
         // phone hides START below this, but enforce it server-side too.
-        if (room.authorizeHost(connKey, msg.hostToken) && s.lobbyState === "open" && s.crowd >= MIN_PLAYERS) {
-          room.markLive();
-          startShow();
+        if (session.room.authorizeHost(connKey, msg.hostToken) && s.lobbyState === "open" && s.crowd >= MIN_PLAYERS) {
+          session.room.markLive();
+          session.show.startShow();
         }
         break;
       }
       case "host_end": {
-        if (room.authorizeHost(connKey, msg.hostToken)) {
-          room.markEnded();
-          void endShow();
+        if (session.room.authorizeHost(connKey, msg.hostToken)) {
+          session.room.markEnded();
+          void session.show.endShow();
         }
         break;
       }
       case "add_sim_players": {
         // Dev/test: the host fills the room with fake players so a solo tester can
         // hit the 2-player minimum and run a believable show alone.
-        if (room.isHost(connKey)) {
+        if (session.room.isHost(connKey)) {
           const n = Math.min(Math.max(1, msg.count ?? 4), 12);
-          sim.add(n);
+          session.sim.add(n);
         }
         break;
       }
       case "config":
-        applyConfig(msg);
+        session.show.applyConfig(msg);
         break;
       case "skip":
-        skip();
+        session.show.skip();
         break;
       case "hold":
-        hold();
+        session.show.hold();
         break;
       case "resume":
-        resume();
+        session.show.resume();
         break;
       case "reset":
-        reset();
+        session.show.reset();
         break;
       case "end":
-        void endShow();
+        void session.show.endShow();
         break;
       case "endVote":
-        endVote();
+        session.show.endVote();
         break;
       case "forceNext":
-        broadcast({ type: "force_next" });
+        session.broadcast({ type: "force_next" });
         break;
       case "playbackControl":
-        broadcast({ type: "playback_control", action: msg.action });
+        session.broadcast({ type: "playback_control", action: msg.action });
         break;
       case "playbackState":
         playbackState = {
@@ -382,7 +358,7 @@ wss.on("connection", (ws) => {
           position: msg.position,
           duration: msg.duration,
         };
-        broadcast(playbackState);
+        session.broadcast(playbackState);
         break;
       default:
         break;
@@ -390,12 +366,13 @@ wss.on("connection", (ws) => {
   });
 
   ws.on("close", () => {
+    session.removeSocket(ws);
     const id = wsParticipant.get(ws);
     if (id) {
-      remove(id);
+      session.participants.remove(id);
       wsParticipant.delete(ws);
     }
-    const promo = room.leave(connKey);
+    const promo = session.room.leave(connKey);
     if (promo.hostChanged && promo.newHostKey) {
       const newHostWs = wsByKey.get(promo.newHostKey);
       if (newHostWs && newHostWs.readyState === WebSocket.OPEN && promo.newHostToken) {
@@ -403,8 +380,8 @@ wss.on("connection", (ws) => {
       }
     }
     wsByKey.delete(connKey);
-    vibes.removeSocket(socketId);
-    broadcast(vibeTallyMsg());
+    session.vibes.removeSocket(socketId);
+    session.broadcast(vibeTallyMsg(session));
     console.log("[ws] client disconnected");
   });
 });
