@@ -113,9 +113,38 @@ This isolates the risky encapsulation (2a) from the risky multi-tenancy (2b).
 - **Isolation (the multi-tenant guarantee):** two `Session`s side by side — an answer/vote/reset in A leaves B's participants/tug/phase untouched; `A.broadcast()` never reaches B's sockets.
 - **Phase gates** as above (2a: adapted units + single-room smoke; 2b: isolation+cap+reaper + two-party smoke).
 
-## Out of scope (YAGNI)
+## Out of scope (YAGNI) — for *this* phase
 
-- Horizontal scaling / Redis / cross-instance state (only needed at hundreds+ of rooms).
-- A shared Suno job queue (the cap suffices at 2–10).
-- Per-room persistence/resumption across server restarts (rooms are ephemeral; restart ends parties).
+These are deliberately excluded from the 2–10-party build. They are not dead ends — the `Session`/`Registry` boundary is chosen precisely so each can be added later by swapping an implementation behind an existing seam. The roadmap below says when and how.
+
+- Horizontal scaling / Redis / cross-instance state.
+- A shared Suno job queue.
+- Per-room persistence/resumption across server restarts.
 - Spectator/cross-room features, accounts, matchmaking.
+
+## Scaling roadmap (when we're ready)
+
+The dominant cost as we scale is **Suno** (per-song generation cost + API rate limits), not server capacity. Server headroom is cheap; Suno spend is the real gate. Each stage below is triggered by a concrete signal, changes one layer, and reuses the seams this design already establishes.
+
+### Stage 0 — now: one server, in memory (2–10 parties)
+`SessionRegistry` = an in-process `Map`. `session.broadcast()` = a loop over local sockets. Concurrent-party **cap** bounds Suno load. **Trigger to move on:** consistently bumping the cap / one instance’s CPU or memory under pressure, or Suno cost needing tighter control.
+
+### Stage 1 — vertical scale + tuning (→ dozens)
+Cheapest next step, **no architectural change**: bump the Render instance size, raise the party cap, and tune Suno concurrency/poll intervals. Add basic per-instance metrics (active rooms, concurrent generations, Suno spend/hour). **Seam used:** the cap is already a single configurable number. **Effort:** hours. **Trigger to move on:** one box can’t hold the room count, or you need >1 instance for availability.
+
+### Stage 2 — externalize state + horizontal scale (→ hundreds+)
+The big one. Two sub-pieces, both behind seams this design already has:
+- **Registry → shared store.** Replace the in-memory `Map` with a Redis-backed `SessionRegistry` (room code → owning-instance + lobby metadata). Because all per-room state already lives behind the `Session`/`Registry` interface, this is an implementation swap, not a rewrite.
+- **Broadcast → pub/sub.** A party’s sockets may land on different server instances behind a load balancer. Replace the local-socket loop in `session.broadcast()` with Redis (or NATS) pub/sub keyed by room code, so a message reaches that room’s members wherever they’re connected. Use sticky sessions (or route by room code) so a party’s stage + phones share an instance where possible, falling back to pub/sub.
+- **Suno → shared queue + budget.** Now that many instances generate, introduce the deferred **global job queue** with a hard concurrency limit and a cost budget/circuit-breaker, so total Suno spend is controlled centrally rather than per-instance.
+
+**Effort:** the largest single step (days–weeks). **Trigger to move on:** parties run long enough that a mid-show redeploy/restart is a real, recurring frustration.
+
+### Stage 3 — durability (resilience across restarts)
+Persist live room state (phase, round, seed, members) to the shared store so a `Session` can be **rehydrated** after a deploy/crash and phones/stage auto-reconnect to their room. Finished songs are already durable in Supabase; this adds *in-flight* show state. **Seam used:** `Session` already centralizes all the state that would need serializing. **Trigger to move on:** only if you pivot toward a public/social product.
+
+### Stage 4 — product surface (only if it becomes a platform)
+Accounts, matchmaking, public/joinable rooms, spectators, cross-room leaderboards. This is a **different product** from "friends in a room with a code" — pursue only on a deliberate strategy change, as its own spec.
+
+### Guiding principle
+Add a layer only when a **measured** signal demands it (cap pressure, instance saturation, Suno cost, restart pain). Each stage is a localized swap behind an existing interface, never a rewrite — that property is the main thing this Phase 2 design is buying you.
