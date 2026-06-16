@@ -1,9 +1,11 @@
 // backend/src/room.test.ts
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import * as room from "./room.js";
+import { Room } from "./room.js";
+
+let room: Room;
 
 describe("room code minting", () => {
-  beforeEach(() => room.close());
+  beforeEach(() => { room = new Room(() => {}); });
 
   it("opens a room with a 4-char code from the unambiguous alphabet", () => {
     const res = room.createRoom();
@@ -14,7 +16,7 @@ describe("room code minting", () => {
 
   it("never includes ambiguous characters I, L, O, 0, 1", () => {
     for (let i = 0; i < 300; i++) {
-      room.close();
+      room = new Room(() => {});
       const res = room.createRoom();
       if (res.ok) expect(res.code).not.toMatch(/[ILO01]/);
     }
@@ -29,7 +31,7 @@ describe("room code minting", () => {
 });
 
 describe("room join + host assignment", () => {
-  beforeEach(() => room.close());
+  beforeEach(() => { room = new Room(() => {}); });
 
   it("accepts a codeless join when no room is open (legacy DJ/loadtest flow)", () => {
     const res = room.tryJoin("c1", "Maya", undefined, undefined);
@@ -88,7 +90,7 @@ describe("room join + host assignment", () => {
 });
 
 describe("room host authorization + lifecycle", () => {
-  beforeEach(() => room.close());
+  beforeEach(() => { room = new Room(() => {}); });
 
   it("authorizes host-only actions by connection key", () => {
     const open = room.createRoom();
@@ -216,7 +218,7 @@ describe("room host authorization + lifecycle", () => {
 });
 
 describe("empty-lobby watchdog", () => {
-  beforeEach(() => { vi.useFakeTimers(); room.close(); });
+  beforeEach(() => { vi.useFakeTimers(); room = new Room(() => {}); });
   afterEach(() => vi.useRealTimers());
 
   it("auto-closes an open lobby that nobody joins within the idle window", () => {
