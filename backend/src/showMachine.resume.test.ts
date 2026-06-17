@@ -97,3 +97,46 @@ describe("empty-round auto-advance (Jackbox-style: never hard-stop)", () => {
     expect(craftSongPrompt).toHaveBeenCalled();
   });
 });
+
+describe("host-gated naming window (rounds 2+)", () => {
+  let show: ShowMachine;
+  beforeEach(() => {
+    show = makeShow().show;
+    vi.clearAllTimers();
+  });
+  afterEach(() => {
+    show.stop();
+  });
+
+  it("round 1 goes straight to the 'what' gather (the lobby was the naming step)", () => {
+    show.startShow();
+    show.onPlaying("song-opener"); // opener track → round 1
+    expect(show.currentShowState().phase).toBe("gathering");
+    expect(show.currentShowState().round).toBe(1);
+  });
+
+  it("a round's track → host-gated 'naming' (no timer); advance() opens the next 'what' gather", () => {
+    show.startShow();
+    show.onPlaying("song-opener"); // → round 1 gathering
+    show.onPlaying("song-round1"); // round 1 track now playing → naming window for round 2
+    expect(show.currentShowState().phase).toBe("naming");
+    expect(show.currentShowState().round).toBe(1); // round bumps on advance, not in naming
+
+    // No timer: time passing must NOT leave the naming window.
+    vi.advanceTimersByTime(5 * 60_000);
+    expect(show.currentShowState().phase).toBe("naming");
+
+    // Host "everyone's in" → opens the timed "what's it about" gather for round 2.
+    show.advance();
+    expect(show.currentShowState().phase).toBe("gathering");
+    expect(show.currentShowState().round).toBe(2);
+  });
+
+  it("advance() is a no-op outside the naming window", () => {
+    show.startShow();
+    show.onPlaying("song-opener"); // round 1 gathering
+    show.advance(); // not naming → ignored
+    expect(show.currentShowState().phase).toBe("gathering");
+    expect(show.currentShowState().round).toBe(1);
+  });
+});

@@ -193,6 +193,7 @@
     hostName: function () { return window.__hostName; },
     crowd: function () { return window.__roomCrowd || 0; },
     startShow: function () { if (window.Net) window.Net.send({ type: "host_start", hostToken: ssGet("bs_hostToken") || undefined }); },
+    advance: function () { if (window.Net) window.Net.send({ type: "advance", hostToken: ssGet("bs_hostToken") || undefined }); },
     endShow: function () { if (window.Net) window.Net.send({ type: "host_end", hostToken: ssGet("bs_hostToken") || undefined }); },
     addSimPlayers: function (n) { if (window.Net) window.Net.send({ type: "add_sim_players", count: n || 4 }); },
   };

@@ -47,10 +47,11 @@ export type Side = "A" | "B";
 
 // Phase of the round currently COLLECTING input (the next song). A song is
 // always playing (or cold-start silent) while the next round collects.
-//   gathering  — name-cloud window: people join + submit intents (stage shows the
-//                name cloud, no voting yet) for ~15s.
-//   collecting — tug-of-war genre vote window (~30s); the buzzer resolves it.
-export type Phase = "idle" | "gathering" | "collecting" | "generating" | "playing";
+//   naming     — host-gated "who's your song about?" window (rounds 2+): the crowd
+//                names their subject; NO timer — the host advances when everyone's in.
+//   gathering  — timed "what's <name>'s song about?" window; the answer feed builds.
+//   collecting — tug-of-war genre vote window; the buzzer resolves it.
+export type Phase = "idle" | "naming" | "gathering" | "collecting" | "generating" | "playing";
 
 export interface ShowState {
   started: boolean;
@@ -69,6 +70,7 @@ export type ClientMsg =
   | { type: "join"; name: string; code?: string; hostToken?: string }
   | { type: "create_room" } // big screen → mint a lobby code
   | { type: "host_start"; hostToken?: string } // host phone → start the show
+  | { type: "advance"; hostToken?: string } // host phone → end the (untimed) naming window, open the "what" gather
   | { type: "host_end"; hostToken?: string } // host phone → end the show
   | { type: "add_sim_players"; count?: number } // host phone (dev) → add fake players to test solo
   | { type: "answer"; participantId: string; text: string }

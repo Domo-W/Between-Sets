@@ -305,6 +305,11 @@ wss.on("connection", (ws) => {
         }
         break;
       }
+      case "advance": {
+        // Host "everyone's in" → close the untimed naming window, open the "what" gather.
+        if (session.room.authorizeHost(connKey, msg.hostToken)) session.show.advance();
+        break;
+      }
       case "host_end": {
         if (session.room.authorizeHost(connKey, msg.hostToken)) {
           session.room.markEnded();

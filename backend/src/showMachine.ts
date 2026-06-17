@@ -370,7 +370,11 @@ export class ShowMachine {
       console.log("[show] held — not advancing to next round");
       return;
     }
-    this.beginGathering();
+    // Round boundary. The OPENER (roundIndex 0) flows straight into round 1's "what"
+    // gather — the lobby served as round 1's naming step. After a real round's track,
+    // open the host-gated "who's your song about?" naming window for the NEXT round.
+    if (this.roundIndex === 0) this.beginGathering();
+    else this.beginNaming();
   }
 
   /** config: set the question, the two genres, and the collect window. */
@@ -444,10 +448,46 @@ export class ShowMachine {
   // ---------------- collecting ----------------
 
   /**
-   * Start a round with the NAME-CLOUD window (phase "gathering"): the stage shows
-   * the name cloud, people join + submit intents, no voting yet. After
-   * `gatherSeconds` the tug-of-war vote opens (beginVoting). This is the round
-   * boundary — genre pick + tug/answer reset happen here.
+   * Host-gated NAMING window (phase "naming") for the NEXT round — "who's your song
+   * about?". No timer: the crowd (re)names their subject and the host calls advance()
+   * when everyone's in. This is the round-2+ boundary where we clear EVERYONE so the
+   * name cloud reflects who's in for the upcoming round. (Round 1 has no naming
+   * window — the lobby served that role; see onPlaying.)
+   */
+  private beginNaming(): void {
+    this.deps.participants.reset();
+    this.deps.broadcast({ type: "names", names: [] }); // clear the stage name cloud immediately
+    this.deps.sim.rejoinForRound(); // re-register any simulated players with fresh names/intents
+    this.phase = "naming";
+    this.endedRecap = null; // back to live (not recap) the moment a new round opens
+    this.activeSeed = undefined;
+    this.generationError = undefined;
+    // No COUNTDOWN in the naming window (it waits for the host's advance()), but keep
+    // the tug heartbeat running so the stage/phone learn the phase and flip their view.
+    if (this.gatherTimer) { clearTimeout(this.gatherTimer); this.gatherTimer = null; }
+    if (this.buzzerTimer) { clearTimeout(this.buzzerTimer); this.buzzerTimer = null; }
+    this.startTugLoop();
+    console.log(`[show] naming (host-gated) — waiting for host to open round ${this.roundIndex + 1}`);
+    this.broadcastShowState();
+  }
+
+  /**
+   * Host pressed "everyone's in" during the naming window → open the timed
+   * "what's your song about?" gather for the next round. No-op outside naming.
+   */
+  advance(): void {
+    if (this.phase !== "naming") {
+      console.log("[show] advance ignored — not in the naming window");
+      return;
+    }
+    this.beginGathering();
+  }
+
+  /**
+   * Open the timed "what's your song about?" gather (phase "gathering"): the answer
+   * feed builds, no voting yet. After `gatherSeconds` the tug-of-war vote opens
+   * (beginVoting). Genre pick + tug reset happen here; participants are NOT reset
+   * (round 1 carries the lobby joins, rounds 2+ carry the names from beginNaming).
    */
   private beginGathering(): void {
     this.roundIndex += 1;
@@ -463,32 +503,23 @@ export class ShowMachine {
       this.genreB = pair.B;
       this.genreSource = "auto";
     }
-    // Round boundary: reset the tug + clear EVERYONE so each round starts fresh —
-    // the crowd re-submits their name (and intent) every round, so the name cloud
-    // reflects who's in for THIS round. EXCEPTION: round 1 is a cold start — joins
-    // that arrived BEFORE the operator pressed Start must carry in.
-    if (this.roundIndex > 1) {
-      this.deps.tug.reset(this.genreA, this.genreB);
-      this.deps.participants.reset();
-      this.deps.broadcast({ type: "names", names: [] }); // clear the stage name cloud immediately
-      this.deps.sim.rejoinForRound(); // re-register any simulated players with fresh intents
-    }
+    this.deps.tug.reset(this.genreA, this.genreB); // fresh tug for this round's genres
     this.phase = "gathering";
     this.endedRecap = null; // a new round means the set is live again, not in recap
     this.activeSeed = undefined;
     this.generationError = undefined;
 
-    // No buzzer yet — just run the name-cloud window, then open voting.
+    // No buzzer yet — just run the "what's it about" window, then open voting.
     this.gatherEndsAt = Date.now() + this.gatherSeconds * 1000;
     if (this.buzzerTimer) { clearTimeout(this.buzzerTimer); this.buzzerTimer = null; }
     if (this.gatherTimer) clearTimeout(this.gatherTimer);
     this.gatherTimer = setTimeout(() => this.beginVoting(), this.gatherSeconds * 1000);
 
     this.startTugLoop();
-    // Now that gather is live (stage has cleared/flipped to the gather screen),
-    // trickle any sim players' intents onto the feed like real people typing.
+    // Now that gather is live (stage has flipped to the answer screen), trickle any
+    // sim players' intents onto the feed like real people typing.
     this.deps.sim.postIntentsToGather();
-    console.log(`[show] gathering round ${this.roundIndex} for ${this.gatherSeconds}s`);
+    console.log(`[show] gathering ("what's it about") round ${this.roundIndex} for ${this.gatherSeconds}s`);
     this.broadcastShowState();
   }
 
@@ -533,7 +564,7 @@ export class ShowMachine {
     // window (name cloud) counts down to voting; the vote window counts down to the
     // buzzer. Both feed the same timeRemaining/timeTotal fields.
     let timeRemaining = 0;
-    let timeTotal = this.collectSeconds;
+    let timeTotal = 0; // naming/idle/etc carry no countdown (only gather + vote do)
     if (this.phase === "collecting") {
       timeRemaining = Math.max(0, (this.collectEndsAt - Date.now()) / 1000);
       timeTotal = this.collectSeconds;

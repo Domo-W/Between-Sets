@@ -303,19 +303,22 @@
         return;
       }
     }
-    // The name cloud (lobby view) stays up before the show AND during each round's
-    // gather window; it flips to the tug battle only once voting opens.
-    var isLobby = m.phase === "idle" || m.phase === "gathering";
+    // The name cloud (lobby view) stays up before the show, during the host-gated
+    // "naming" window, AND during each round's "what's it about" gather; it flips to
+    // the tug battle only once voting opens.
+    var isLobby = m.phase === "idle" || m.phase === "naming" || m.phase === "gathering";
     document.body.classList.toggle("lobby", isLobby);
-    // During the gather window show the "I want to…" question + intent feed
-    // (vs the join name-cloud pre-show). Clear the feed when a new round opens.
+    // "naming" = name cloud + "who's your song about?" (host-gated, no countdown).
+    document.body.classList.toggle("naming", m.phase === "naming");
+    // "gathering" swaps the name cloud for the "what's your song about?" answer feed.
     document.body.classList.toggle("gathering", m.phase === "gathering");
-    if (m.phase === "gathering" && lastTugPhase !== "gathering") clearIntents();
+    // Clear the answer feed when a fresh naming window opens (start of a new round).
+    if (m.phase === "naming" && lastTugPhase !== "naming") clearIntents();
     lastTugPhase = m.phase;
 
     // The "cooking" hold (reveal) stays up through generation; it drops only when
-    // the next song actually starts (→ "gathering") or we reset (→ "idle").
-    if (revealUp && (m.phase === "gathering" || m.phase === "idle")) dismissReveal();
+    // the next round opens (→ "naming"/"gathering") or we reset (→ "idle").
+    if (revealUp && (m.phase === "naming" || m.phase === "gathering" || m.phase === "idle")) dismissReveal();
 
     // Name-cloud countdown: during the gather window, show "VOTING STARTS IN Ns".
     if (gatherCountdown) {

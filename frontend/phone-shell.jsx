@@ -63,6 +63,7 @@ function PhoneShell() {
   const [isHost, setIsHost] = useState(() => !!(window.PhoneRoom && window.PhoneRoom.isHost()));
   const [hostName, setHostName] = useState(null);
   const [started, setStarted] = useState(false); // reactive show-started flag (drives host buttons)
+  const [phase, setPhase] = useState('idle');    // authoritative backend phase → drives which screen shows
   const [roomCount, setRoomCount] = useState(0); // live crowd size, for the waiting room
   const [endArmed, setEndArmed] = useState(false); // two-tap End show (no native confirm)
   const endArmTimer = useRef(null);
@@ -133,10 +134,12 @@ function PhoneShell() {
       setStarted(false); setJoined(false); setStep(0);
       if (window.__resetJoinState) window.__resetJoinState();
     });
-    // Authoritative backend flow state — drives loading/reveal/walkthrough.
+    // Authoritative backend flow state — the PHASE drives which screen shows:
+    //   naming → Q1 (name)   gathering → Q2 (intent)   collecting → vote.
     const offShow = window.Net.on('show_state', (m) => {
       if (!m) return;
       setStarted(!!(m && m.started));
+      setPhase(m.phase);
       if (m.phase === 'idle') {
         formedRound.current = 0;
         setRound(0);
@@ -151,18 +154,23 @@ function PhoneShell() {
         if (m.seed) setReveal(m.seed);
         return;
       }
-      // 'gathering' (name-cloud window) is the START of a round — same reset as
-      // collecting: drop the loading screen and put the user into name/intent.
-      if (m.phase === 'gathering' || m.phase === 'collecting') {
-        const changedRound = m.round !== formedRound.current;
+      if (m.phase === 'naming' || m.phase === 'gathering' || m.phase === 'collecting') {
         formedRound.current = m.round;
         setRound(m.round);
-        // A new round means a new set is live again — leave the recap.
         setEnded(false);
-        if (loadingRef.current || changedRound) {
-          setLoading(false);
-          setReveal(null);
-          setStep(0);
+        setLoading(false);
+        setReveal(null);
+        if (m.phase === 'naming') {
+          // Host-gated re-name window (rounds 2+): the backend cleared everyone, so
+          // forget the old participant id and drop to Q1 to re-enter a subject.
+          if (window.__resetJoinState) window.__resetJoinState();
+          setJoined(false);
+          setParticipated(true);
+          setStep(0); // Q1 "who's your song about?"
+        } else if (m.phase === 'gathering') {
+          setStep(1); // Q2 "what's <name>'s song about?"
+        } else {
+          setStep(2); // genre battle
         }
       }
     });
@@ -172,18 +180,15 @@ function PhoneShell() {
         setRound(0);
         setLoading(false);
         setReveal(null);
-      } else if (m && (m.phase === 'gathering' || m.phase === 'collecting') && m.round !== formedRound.current) {
+      } else if (m && (m.phase === 'naming' || m.phase === 'gathering' || m.phase === 'collecting') && m.round !== formedRound.current) {
         formedRound.current = m.round;
         setRound(m.round);
-        // A new collecting round means a new set is live again — leave the recap.
+        // A new round means a new set is live again — leave the recap. The screen
+        // (step) is driven by phase in the show_state handler, not here.
         setEnded(false);
-        // Only RESET the walkthrough for a brand-new song round (i.e. we were
-        // waiting on the loading screen). A pre-start cold-start round must NOT
-        // wipe progress the user already made.
         if (loadingRef.current) {
           setLoading(false);
           setReveal(null);
-          setStep(0);
         }
       }
     });
@@ -201,15 +206,8 @@ function PhoneShell() {
       .catch(() => {});
   }, [playlistView]);
 
-  // A new round (>1) clears everyone on the backend — re-join: forget the old id
-  // and drop to the NAME screen so the user re-types their name into the mix.
-  useEffect(() => {
-    if (round > 1) {
-      if (window.__resetJoinState) window.__resetJoinState();
-      setJoined(false);
-      setStep(0);
-    }
-  }, [round]);
+  // (Per-round re-join is handled by the 'naming' phase in the show_state handler:
+  //  the host-gated naming window forgets the old id and drops to Q1 to re-name.)
 
   // ---- host/room/rejection event subscriptions ----
   useEffect(() => {
@@ -236,21 +234,9 @@ function PhoneShell() {
     };
   }, []);
 
-  // NAME step (Q1 "Who's your song about?") auto-advances the moment the join
-  // registers — naming the subject moves you to Q2 "What's <NAME>'s song about?".
-  // `joined` is reset every round, so this
-  // fires fresh each time (no instant-skip) for everyone, new or returning.
-  useEffect(() => {
-    // Auto-advance name → intent ONLY once the show has started. Before the host
-    // presses START, the name screen IS the lobby: the user shouts a name and
-    // waits, and the host needs their START button (which lives on this screen) to
-    // stay put. Advancing pre-show would strand the host on intent/vote with no
-    // way to start, and intent/vote do nothing while no round is running.
-    if (!loading && screen === 'name' && joined && started) {
-      const id = setTimeout(() => setStep((s) => (seq[s] === 'name' ? Math.min(s + 1, seq.length - 1) : s)), 400);
-      return () => clearTimeout(id);
-    }
-  }, [loading, screen, joined, seq, started]);
+  // (Q1 → Q2 is no longer auto-advanced on join: the backend PHASE drives the
+  //  screen now — naming→Q1, gathering→Q2, collecting→vote — so the crowd moves in
+  //  lockstep with the host-gated naming window and the timed gather/vote windows.)
 
   // INTENT step: focus the field as soon as it shows so the keyboard is up
   // (desktop). iOS needs a tap to open the soft keyboard — unavoidable there.
@@ -362,7 +348,9 @@ function PhoneShell() {
           {loading ? (
             <LoadingScreen reveal={reveal} />
           ) : screen === 'name' ? (
-            <ScreenTexture active />
+            (phase === 'naming' && joined)
+              ? <NamingWaiting myName={(window.__participantName || '').toUpperCase()} />
+              : <ScreenTexture active />
           ) : screen === 'vibe' ? (
             <ScreenVibe active />
           ) : screen === 'intent' ? (
@@ -376,13 +364,21 @@ function PhoneShell() {
       {/* (Pre-show host START / waiting status now live on the dedicated waiting
           room screen, shown once joined and before the show starts.) */}
 
-      {/* footer Next — only VIBE needs it (name auto-advances on join;
-          intent self-advances on send; vote is round-driven) */}
+      {/* footer Next — only VIBE needs it (intent self-advances on send;
+          vote is round-driven) */}
       {!loading && screen === 'vibe' && (
         <div className="shell-foot">
           <button className="shell-next" onClick={next}>NEXT →</button>
         </div>
       )}
+
+      {/* Host "Continue" — only during the host-gated naming window. Advances
+          everyone from "who's your song about?" to the timed "what's it about?". */}
+      {started && isHost && phase === 'naming' && !loading ? (
+        <div className="shell-foot">
+          <button className="shell-next" onClick={() => window.PhoneRoom.advance()}>👑 EVERYONE&apos;S IN — CONTINUE →</button>
+        </div>
+      ) : null}
 
       {/* End show — host only. Two-tap to confirm (no native confirm() dialog,
           which is unreliable on mobile). Top-right; the vote countdown is
@@ -423,6 +419,17 @@ function PhoneShell() {
     </div>
   );
   return Stage;
+}
+
+/* naming window: once you've named your subject, wait for the host to continue */
+function NamingWaiting({ myName }) {
+  return (
+    <div className="screen" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 14, padding: '40px 26px', textAlign: 'center', boxSizing: 'border-box' }}>
+      <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.3em', color: '#8C8C9C' }}>LOCKED IN</div>
+      <div style={{ fontFamily: "'Space Grotesk',system-ui,sans-serif", fontWeight: 800, fontSize: 40, lineHeight: 1.04, background: 'linear-gradient(90deg,#00E5FF,#FF1A8C)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent', wordBreak: 'break-word' }}>{myName || 'YOU'}</div>
+      <div style={{ fontFamily: "'Space Grotesk',system-ui,sans-serif", fontSize: 15, color: '#8C8C9C' }}>your song's star — waiting for the host…</div>
+    </div>
+  );
 }
 
 /* tiny step indicator (dots) */
