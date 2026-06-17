@@ -4,6 +4,7 @@
    Submitting joins them (idempotent) and that subject becomes their
    chant identity / seed.name. Editing after submit is intentionally
    not supported — you type, you send, you're locked in for the round.
+   Layout: title + input live together as one centered group.
    ============================================================ */
 function ScreenTexture({ active }) {
   const [val, setVal] = useState('');
@@ -27,27 +28,28 @@ function ScreenTexture({ active }) {
 
   return (
     <div className="screen texture subjectq">
-      <div className="screen-kicker">WHO'S IT ABOUT</div>
-      <h1 className="screen-title">WHO'S YOUR<br /><span className="accent">SONG ABOUT?</span></h1>
-      <p className="subq-hint">One name — they become the star of your track.</p>
-
-      <div className="dock">
-        <form className="word-form" onSubmit={submit}>
-          <input
-            ref={inputRef}
-            className="word-input"
-            value={val}
-            onChange={(e) => setVal(e.target.value)}
-            placeholder="A name — who's the song about?"
-            maxLength={16}
-            enterKeyHint="done"
-            autoComplete="off"
-            spellCheck={false}
-          />
-          <button type="submit" className="word-send" aria-label="lock in" disabled={!val.trim()}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
-          </button>
-        </form>
+      <div className="subq-group">
+        <div className="screen-kicker">WHO'S IT ABOUT</div>
+        <h1 className="screen-title">WHO'S YOUR<br /><span className="accent">SONG ABOUT?</span></h1>
+        <div className="dock">
+          <form className="word-form" onSubmit={submit}>
+            <input
+              ref={inputRef}
+              className="word-input"
+              value={val}
+              onChange={(e) => setVal(e.target.value)}
+              placeholder="Type a name…"
+              maxLength={16}
+              enterKeyHint="done"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <button type="submit" className="word-send" aria-label="lock in" disabled={!val.trim()}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </button>
+          </form>
+        </div>
+        <p className="subq-hint">One name — they become the star of your track.</p>
       </div>
     </div>
   );
