@@ -108,8 +108,8 @@
     .bs-dots { animation:bsdots 1.4s ease-in-out infinite; }
     @keyframes bsdots { 0%,100%{opacity:.25;} 50%{opacity:1;} }
 
-    /* INTENT ("I want to…"): center the input vertically so it isn't stranded at
-       the top with a big empty gap (and sits nearer the thumb/keyboard). */
+    /* Q2 ("What's <NAME>'s song about?"): center the input vertically so it isn't
+       stranded at the top with a big empty gap (and sits nearer the thumb/keyboard). */
     .screen.intent { display:flex; flex-direction:column; }
     .screen.intent .intent-head { flex:0 0 auto; }
     .screen.intent .intent-box-wrap { margin-top:auto; margin-bottom:auto; }
@@ -171,18 +171,18 @@
   <script type="text/babel" src="ios-frame.jsx"></script>
   <script type="text/babel" src="shared.jsx?v=9"></script>
   <script type="text/babel" src="screen-vibe.jsx?v=7"></script>
-  <script type="text/babel" src="screen-texture.jsx?v=7"></script>
+  <script type="text/babel" src="screen-texture.jsx?v=9"></script>
   <script type="text/babel" src="screen-tug.jsx?v=7"></script>
-  <script type="text/babel" src="screen-intent.jsx?v=13"></script>
+  <script type="text/babel" src="screen-intent.jsx?v=14"></script>
   <!-- merged from design-handoff: the end-of-set recap (playlist player) -->
   <script src="setlist.js?v=1"></script>
   <script type="text/babel" src="screen-recap.jsx?v=2"></script>
-  <script type="text/babel" src="phone-shell.jsx?v=12"></script>
+  <script type="text/babel" src="phone-shell.jsx?v=13"></script>
 
   <!-- phone glue: join (NAME) + answer (INTENT). Loaded LAST.
        Plain vanilla JS (no Babel) — net.js/net-crowd.js are plain scripts
        above it so its CrowdSim.addWord patch applies immediately; the
        IntentSink wrap retries until screen-intent.jsx's Babel module runs. -->
-  <script src="phone-net.js?v=4"></script>
+  <script src="phone-net.js?v=6"></script>
 </body>
 </html>

@@ -47,14 +47,15 @@ const GENRE_POOL: Array<{ name: string; short: string }> = [
   { name: "Miami Bass", short: "MIA" },
 ];
 
-// On-brand default prompts the house uses when the crowd stays silent, so the
-// generated lyrics still read like a crowd request instead of going blank.
+// On-brand default themes the house uses when the crowd stays silent, so the
+// generated lyrics still read like a real "what's the song about" answer instead
+// of going blank.
 const HOUSE_INTENTS = [
-  "keep the party going",
-  "dance like nobody's watching",
-  "turn it all the way up",
-  "lose ourselves on the floor",
-  "make tonight unforgettable",
+  "the best night of our lives",
+  "owning the dancefloor",
+  "being totally unstoppable tonight",
+  "everyone losing it at once",
+  "a night nobody will forget",
 ];
 
 // Stale-show watchdog: if Start ran but no stage ever reports a track playing
@@ -78,7 +79,7 @@ const OPENER_URL = "/assets/opener.m4a";
 
 export class ShowMachine {
   // ---------------- config / defaults ----------------
-  private question = "What do you want to do tonight?";
+  private question = "What's your song about?";
   // Remember the genres used in the last few rounds so we don't keep re-running the
   // same matchups. We pick from genres NOT seen recently when we can.
   private recentGenres: string[] = [];

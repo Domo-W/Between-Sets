@@ -110,6 +110,10 @@
 }
 .we-sub { font-family: var(--mono); font-size: 10px; letter-spacing: 0.18em; color: var(--text-dim); opacity: 0.7; }
 
+/* Q1 single-subject entry (replaces the old shout-a-name word wall) */
+.subq-hint { font-family: var(--mono); font-size: 12px; letter-spacing: 0.05em; color: var(--text-dim);
+  text-align: center; margin: 12px 0 0; opacity: 0.85; }
+
 .wall-cloud {
   position: absolute; inset: 0; padding: 16px;
   display: flex; flex-wrap: wrap; gap: 4px 16px;
@@ -429,10 +433,15 @@
 .screen.intent { padding: 6px 18px 0; }
 .intent-head { position: relative; z-index: 3; }
 .intent-title {
-  font-family: var(--disp); font-weight: 700; font-size: 56px; line-height: 0.92;
+  /* Q2 is now a full sentence ("WHAT'S <NAME>'S SONG ABOUT?") whose length varies
+     with the subject name (input-capped at 16 chars), so scale to viewport + wrap
+     instead of the old fixed 56px (which fit the short "I WANT TO…"). */
+  font-family: var(--disp); font-weight: 700; font-size: clamp(26px, 8vw, 44px); line-height: 0.94;
   letter-spacing: -0.02em; text-transform: uppercase; margin: 6px 0 0; color: #fff;
+  text-wrap: balance; overflow-wrap: break-word;
   text-shadow: 0 0 calc(26px * var(--glow)) color-mix(in srgb, var(--cyan) 65%, transparent);
 }
+.intent-title .accent { color: var(--cyan); }
 .intent-title .it-dots { color: var(--cyan); animation: itdots 1.3s steps(1) infinite; }
 @keyframes itdots { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
 

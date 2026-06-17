@@ -1,7 +1,8 @@
 /* ============================================================
-   screen-intent.jsx — Onboarding: "I WANT TO…" intent capture.
-   The submitted string is emitted to ONE isolated handler
-   (window.IntentSink) so it can later go to a real backend.
+   screen-intent.jsx — Q2: "WHAT'S <NAME>'S SONG ABOUT?" capture.
+   Reuses the subject named in Q1 (window.__participantName) to
+   personalize the prompt. The submitted string is emitted to ONE
+   isolated handler (window.IntentSink) → backend as the `answer`.
    ============================================================ */
 
 /* the single isolated sink for the typed intent */
@@ -118,13 +119,15 @@ function ScreenIntent({ active, onAdvance }) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
   };
 
-  // Personalize the prompt with the name they just entered: "<NAME> WANTS TO…".
+  // Personalize Q2 with the subject they named in Q1: "WHAT'S <NAME>'S SONG ABOUT?".
   const who = ((typeof window !== 'undefined' && window.__participantName) || '').trim();
   return (
     <div className="screen intent">
       <div className="intent-head">
         <span className="screen-kicker">JOIN THE ROOM{secsLeft != null && secsLeft > 0 ? ' · ' + secsLeft + 'S TO LOCK IN' : ''}</span>
-        <h1 className="intent-title">{who ? who.toUpperCase() + ' WANTS TO' : 'I WANT TO'}<span className="it-dots">…</span></h1>
+        <h1 className="intent-title">{who
+          ? <React.Fragment>WHAT'S <span className="accent">{who.toUpperCase()}</span>'S SONG ABOUT?</React.Fragment>
+          : <React.Fragment>WHAT'S YOUR SONG ABOUT?</React.Fragment>}</h1>
       </div>
 
       <div className="intent-box-wrap">
@@ -137,7 +140,7 @@ function ScreenIntent({ active, onAdvance }) {
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             onKeyDown={onKey}
-            placeholder="…get lit!"
+            placeholder="what makes them legendary…"
             rows={3}
             spellCheck={false}
             autoComplete="off"

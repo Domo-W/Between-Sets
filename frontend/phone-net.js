@@ -60,7 +60,7 @@
   function submitName(name) {
     const n = String(name || '').trim().slice(0, 40);
     if (!n) return;
-    window.__participantName = n; // remembered so the intent screen can say "<NAME> wants to…"
+    window.__participantName = n; // the song's subject — Q2 reuses it: "What's <NAME>'s song about?"
     if (joinSent) return;
     joinSent = true;
     if (window.Net) window.Net.send({ type: 'join', name: n, code: window.__roomCode || undefined, hostToken: ssGet("bs_hostToken") || undefined });

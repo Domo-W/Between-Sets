@@ -260,7 +260,7 @@
       border: none; background: #FF1A8C; color: #0A0A0F; font-family: var(--disp); font-weight: 700;
       font-size: 17px; letter-spacing: 0.05em; box-shadow: 0 0 50px rgba(255,26,140,0.45); transition: transform .12s ease; }
     .ended-newshow:active { transform: scale(0.96); }
-    /* ---- GATHER SCREEN: "I want to…" question + intents populating ---- */
+    /* ---- GATHER SCREEN: "What's your song about?" question + answers populating ---- */
     .intent-screen { display: none; flex: 1 1 auto; flex-direction: column; min-height: 0; }
     body.gathering #nameCloud { display: none; }
     body.gathering .intent-screen { display: flex; }
@@ -391,19 +391,19 @@
         <div class="lobby-tag">Your words become the next song.</div>
         <div class="lobby-steps">
           <span><b>1</b> Scan the code</span>
-          <span><b>2</b> Name + “I want to…”</span>
+          <span><b>2</b> Name your star + the story</span>
           <span><b>3</b> Vote the genre</span>
         </div>
       </div>
       <div id="nameCloud" class="name-cloud">
         <div class="cloud-empty" id="cloudEmpty">be the first in — scan to join</div>
       </div>
-      <!-- Gather screen: the "I want to…" question + intents populating live.
+      <!-- Gather screen: the "What's your song about?" question + answers populating live.
            Shown (instead of the name cloud) once the host starts the show. -->
       <div id="intentScreen" class="intent-screen">
-        <div class="is-question">TONIGHT, I WANT TO…</div>
+        <div class="is-question">WHAT'S YOUR SONG ABOUT?</div>
         <div id="intentFeed" class="intent-feed">
-          <div class="if-empty" id="intentEmpty">type your “I want to…” on your phone</div>
+          <div class="if-empty" id="intentEmpty">tell us what it's about on your phone</div>
         </div>
       </div>
     </div>

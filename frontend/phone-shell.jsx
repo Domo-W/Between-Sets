@@ -236,8 +236,9 @@ function PhoneShell() {
     };
   }, []);
 
-  // NAME step auto-advances the moment the join registers — typing your name and
-  // submitting moves you to "I want to…". `joined` is reset every round, so this
+  // NAME step (Q1 "Who's your song about?") auto-advances the moment the join
+  // registers — naming the subject moves you to Q2 "What's <NAME>'s song about?".
+  // `joined` is reset every round, so this
   // fires fresh each time (no instant-skip) for everyone, new or returning.
   useEffect(() => {
     // Auto-advance name → intent ONLY once the show has started. Before the host

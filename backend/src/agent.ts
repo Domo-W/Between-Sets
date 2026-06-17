@@ -5,8 +5,8 @@ import { genreBpm } from "./tempo.js";
 const client = new Anthropic({ apiKey: CONFIG.anthropicApiKey });
 
 export interface SongSeed {
-  name: string; // the selected participant's name
-  answer: string; // their answer to the performer's question
+  name: string; // who the song is about (named by the crowd; chanted in the lyrics)
+  answer: string; // what the crowd says the song is about (the theme)
   genre: string; // the winning genre from the tug battle
   vibe?: string; // the crowd's winning Pick-the-Vibe mood (colors energy + style)
   bpm?: number; // the chosen tempo for THIS song (set once upstream so it's consistent)
@@ -66,20 +66,20 @@ const STRICT_SANITIZE =
 function systemPrompt(seed: SongSeed, bpm: number, strict: boolean): string {
   return [
     "You are the live lyricist for 'Between Sets', a party where the crowd's answers become AI songs in real time.",
-    "Turn ONE person's name + their 'I want to…' intent + a winning genre into a chantable, crowd-igniting party song.",
+    "Write a song ABOUT one person the crowd named, on the theme the crowd gave (their answer to 'what's the song about'), in a winning genre — chantable and crowd-igniting.",
     "",
     "FORMAT — replace every placeholder with original lyrics:",
     STRUCTURE_TEMPLATE,
     "",
     "Rules:",
-    "- THE PERSON'S NAME IS MANDATORY and central: it is the [Intro], lands in the [Chorus], and is chanted repeatedly inside the verses as a direct call-out. Never omit, abbreviate, or anonymize it, even when transforming an unsafe intent.",
+    "- THE PERSON'S NAME IS MANDATORY and central: it is the [Intro], lands in the [Chorus], and is chanted repeatedly inside the verses as a direct call-out. Never omit, abbreviate, or anonymize it, even when transforming an unsafe theme.",
     "- Build the [Chorus] as a short, super-repetitive hook drawn directly from their answer. Keep it simple and shoutable.",
     "- Add sparse crowd ad-libs and call-and-response, but vary them from song to song.",
-    "- Every song must use fresh, intent-specific wording. Do not add stock positivity or party slogans that were not present in the person's answer.",
+    "- Every song must use fresh, theme-specific wording. Do not add stock positivity or party slogans that were not present in what the crowd said the song's about.",
     "- Repeat the custom chorus hook on purpose, but do not repeat generic verse lines just to fill space.",
     "- Use these exact section tags: [Intro], [Chorus], [Verse 1], [Verse 2], [Outro] (repeat [Chorus] between verses). Aim for ~6–8 sections so the song runs long enough.",
     seed.vibe
-      ? `- THE CROWD'S WINNING VIBE TONIGHT IS "${seed.vibe}". Steer the song's mood, energy, and word choice toward that vibe, and reflect it in the 'style' production descriptors — while staying true to ${seed.name}'s intent.`
+      ? `- THE CROWD'S WINNING VIBE TONIGHT IS "${seed.vibe}". Steer the song's mood, energy, and word choice toward that vibe, and reflect it in the 'style' production descriptors — while staying true to what ${seed.name}'s song is about.`
       : "",
     `- The 'style' field MUST start with "${seed.genre}, ${bpm} BPM, 4/4" followed by genre-appropriate production descriptors${seed.vibe ? ` that match a "${seed.vibe}" mood` : ""}.`,
     "- Keep it crowd-friendly: no slurs, hate, explicit sexual content, or targeted insults. If an intent is unsafe, transform it into something fun and inclusive (still keep the name).",
@@ -91,8 +91,8 @@ function systemPrompt(seed: SongSeed, bpm: number, strict: boolean): string {
 function userPrompt(seed: SongSeed): string {
   const bpm = seed.bpm ?? genreBpm(seed.genre);
   return [
-    `Name: ${seed.name}`,
-    `Their answer: ${seed.answer}`,
+    `Song is about: ${seed.name}`,
+    `What it's about: ${seed.answer}`,
     `Winning genre: ${seed.genre}`,
     seed.vibe ? `Crowd's winning vibe: ${seed.vibe}` : "",
     `Target tempo: ${bpm} BPM`,
