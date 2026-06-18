@@ -140,7 +140,7 @@ function ScreenIntent({ active, onAdvance }) {
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             onKeyDown={onKey}
-            placeholder="what makes them legendary…"
+            placeholder="a wild night, a secret talent, an inside joke…"
             rows={3}
             spellCheck={false}
             autoComplete="off"
