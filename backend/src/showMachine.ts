@@ -250,6 +250,12 @@ export class ShowMachine {
       clearTimeout(this.buzzerTimer);
       this.buzzerTimer = null;
     }
+    if (this.tugLoop) {
+      // Stop the 15Hz snapshot loop — no rounds run in the idle lobby. It restarts
+      // (startTugLoop) when the next show's gather/naming window opens.
+      clearInterval(this.tugLoop);
+      this.tugLoop = null;
+    }
     this.deps.tug.reset(this.genreA, this.genreB);
     this.deps.room.close();
     this.deps.sim.reset();
