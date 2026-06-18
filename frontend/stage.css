@@ -122,7 +122,10 @@ body.revealing .win-flash { opacity: 0 !important; animation: none !important; }
 #ended { z-index: 30; }
 .overlay, #bf { transition: opacity .6s ease; }
 
-body.ended #ended { opacity: 1; }
+/* When the finale fades in, restore interactivity — .screen-state defaults to
+   pointer-events:none, so without this the "START A NEW SHOW" button is visible
+   but every click passes through it to the battle layers behind. */
+body.ended #ended { opacity: 1; pointer-events: auto; }
 body.ended .overlay, body.ended #bf { opacity: 0; }
 body.ended .hint { display: none; }
 
