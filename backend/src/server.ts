@@ -311,10 +311,13 @@ wss.on("connection", (ws) => {
         break;
       }
       case "rename": {
-        // "Change my name" — update the song's subject in place + refresh the cloud.
+        // "Change my name" — rename ONLY the participant this connection owns. The
+        // client-supplied msg.participantId is NOT trusted (IDOR: a phone could
+        // otherwise rename anyone, and the name lands in lyrics + on the big screen).
         const nm = (msg.name || "").trim();
-        if (nm && msg.participantId) {
-          session.participants.rename(msg.participantId, nm);
+        const ownId = wsParticipant.get(ws);
+        if (nm && ownId) {
+          session.participants.rename(ownId, nm);
           session.broadcast({ type: "names", names: session.participants.names() });
         }
         break;
