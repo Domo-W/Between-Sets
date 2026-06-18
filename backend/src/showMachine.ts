@@ -250,12 +250,11 @@ export class ShowMachine {
       clearTimeout(this.buzzerTimer);
       this.buzzerTimer = null;
     }
-    if (this.tugLoop) {
-      // Stop the 15Hz snapshot loop — no rounds run in the idle lobby. It restarts
-      // (startTugLoop) when the next show's gather/naming window opens.
-      clearInterval(this.tugLoop);
-      this.tugLoop = null;
-    }
+    // NOTE: do NOT stop the tug loop here. The stage drives its lobby/battle/gather
+    // view off the CONTINUOUS tug broadcasts (the phase heartbeat). Stopping it on
+    // reset leaves any connected/reconnecting stage frozen on the stale battle view —
+    // the idle phase never reaches it, so body stays unclassed and #viewport shows.
+    // The loop is a singleton; it keeps broadcasting the idle phase to keep clients synced.
     this.deps.tug.reset(this.genreA, this.genreB);
     this.deps.room.close();
     this.deps.sim.reset();
