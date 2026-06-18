@@ -6,8 +6,10 @@
    not supported — you type, you send, you're locked in for the round.
    Layout: title + input live together as one centered group.
    ============================================================ */
-function ScreenTexture({ active }) {
-  const [val, setVal] = useState('');
+function ScreenTexture({ active, onSubmitted }) {
+  // Prefill with the current subject when changing it (joined players); empty for a
+  // brand-new joiner.
+  const [val, setVal] = useState((typeof window !== 'undefined' && window.__participantName) || '');
   const inputRef = useRef(null);
 
   // Keep the keyboard up when this screen becomes active.
@@ -21,9 +23,11 @@ function ScreenTexture({ active }) {
     e && e.preventDefault();
     const t = val.trim();
     if (!t) return;
-    if (window.submitName) window.submitName(t); // join + broadcast the subject to the stage cloud
+    if (window.submitSubject) window.submitSubject(t); // join (first time) or rename (already in)
+    else if (window.submitName) window.submitName(t);
     try { haptic(16); } catch (e) {}
     setVal('');
+    if (onSubmitted) onSubmitted(); // leave the "change name" editor → back to "locked in"
   };
 
   return (

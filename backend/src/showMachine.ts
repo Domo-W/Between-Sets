@@ -455,9 +455,12 @@ export class ShowMachine {
    * window — the lobby served that role; see onPlaying.)
    */
   private beginNaming(): void {
-    this.deps.participants.reset();
-    this.deps.broadcast({ type: "names", names: [] }); // clear the stage name cloud immediately
-    this.deps.sim.rejoinForRound(); // re-register any simulated players with fresh names/intents
+    // Players PERSIST across rounds (stable ids → fair anti-repeat + reliable answer
+    // recording). Clear only the per-round "what's it about" answer; keep everyone in
+    // the room. Players can change their name or new people can join during this window.
+    this.deps.participants.clearRound();
+    this.deps.sim.reseedForRound(); // sims keep their id; just give them a fresh answer
+    this.deps.broadcast({ type: "names", names: this.deps.participants.names() }); // refresh the cloud
     this.phase = "naming";
     this.endedRecap = null; // back to live (not recap) the moment a new round opens
     this.activeSeed = undefined;

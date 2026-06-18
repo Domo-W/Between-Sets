@@ -31,13 +31,23 @@ export class Participants {
   }
 
   /**
-   * Round boundary. Intents PERSIST across rounds: returning players only re-vibe
-   * and re-vote (they don't re-type their "I want to…"), so their most-recent
-   * intent keeps them selectable every round. New intents simply overwrite.
-   * Kept as a no-op so the round boundary can call it without wiping intents.
+   * Round boundary: clear everyone's "what's it about" answer so the next round's
+   * selection pool only includes players who answer THIS round. Participants — and
+   * their stable ids + the anti-repeat history (lastSelectedId) — PERSIST across
+   * rounds, so the spotlight rotates fairly and real players stay selectable without
+   * having to re-join every round.
    */
   clearRound(): void {
-    /* intentionally empty — see selectRandomAnswerer's anti-repeat */
+    for (const p of this.byId.values()) p.answer = null;
+  }
+
+  /** Update a joined participant's display name / song subject (the "change my
+   *  name" option). No-op if the id is unknown. */
+  rename(participantId: string, name: string): void {
+    const p = this.byId.get(participantId);
+    if (!p) return;
+    const n = name.trim();
+    if (n) p.name = n;
   }
 
   /** Drop a participant entirely (on disconnect). */

@@ -64,6 +64,7 @@ function PhoneShell() {
   const [hostName, setHostName] = useState(null);
   const [started, setStarted] = useState(false); // reactive show-started flag (drives host buttons)
   const [phase, setPhase] = useState('idle');    // authoritative backend phase → drives which screen shows
+  const [changingName, setChangingName] = useState(false); // naming window: editing your subject vs "locked in"
   const [roomCount, setRoomCount] = useState(0); // live crowd size, for the waiting room
   const [endArmed, setEndArmed] = useState(false); // two-tap End show (no native confirm)
   const endArmTimer = useRef(null);
@@ -140,6 +141,7 @@ function PhoneShell() {
       if (!m) return;
       setStarted(!!(m && m.started));
       setPhase(m.phase);
+      if (m.phase !== 'naming') setChangingName(false); // leave the "change name" editor when naming ends
       if (m.phase === 'idle') {
         formedRound.current = 0;
         setRound(0);
@@ -161,12 +163,11 @@ function PhoneShell() {
         setLoading(false);
         setReveal(null);
         if (m.phase === 'naming') {
-          // Host-gated re-name window (rounds 2+): the backend cleared everyone, so
-          // forget the old participant id and drop to Q1 to re-enter a subject.
-          if (window.__resetJoinState) window.__resetJoinState();
-          setJoined(false);
+          // Host-gated naming window. Players PERSIST across rounds now, so we do NOT
+          // drop the join: a joined player sees a "locked in — change?" panel, only a
+          // brand-new phone sees Q1. Either way step 0 routes to the name screen.
           setParticipated(true);
-          setStep(0); // Q1 "who's your song about?"
+          setStep(0);
         } else if (m.phase === 'gathering') {
           setStep(1); // Q2 "what's <name>'s song about?"
         } else {
@@ -348,9 +349,9 @@ function PhoneShell() {
           {loading ? (
             <LoadingScreen reveal={reveal} />
           ) : screen === 'name' ? (
-            (phase === 'naming' && joined)
-              ? <NamingWaiting myName={(window.__participantName || '').toUpperCase()} />
-              : <ScreenTexture active />
+            (phase === 'naming' && joined && !changingName)
+              ? <NamingWaiting myName={(window.__participantName || '').toUpperCase()} onChange={() => setChangingName(true)} />
+              : <ScreenTexture active onSubmitted={() => setChangingName(false)} />
           ) : screen === 'vibe' ? (
             <ScreenVibe active />
           ) : screen === 'intent' ? (
@@ -421,13 +422,17 @@ function PhoneShell() {
   return Stage;
 }
 
-/* naming window: once you've named your subject, wait for the host to continue */
-function NamingWaiting({ myName }) {
+/* naming window: once you've named your subject, wait for the host to continue
+   (with the option to change who your song is about). */
+function NamingWaiting({ myName, onChange }) {
   return (
     <div className="screen" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 14, padding: '40px 26px', textAlign: 'center', boxSizing: 'border-box' }}>
-      <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.3em', color: '#8C8C9C' }}>LOCKED IN</div>
+      <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.3em', color: '#8C8C9C' }}>YOUR SONG'S STAR</div>
       <div style={{ fontFamily: "'Space Grotesk',system-ui,sans-serif", fontWeight: 800, fontSize: 40, lineHeight: 1.04, background: 'linear-gradient(90deg,#00E5FF,#FF1A8C)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent', wordBreak: 'break-word' }}>{myName || 'YOU'}</div>
-      <div style={{ fontFamily: "'Space Grotesk',system-ui,sans-serif", fontSize: 15, color: '#8C8C9C' }}>your song's star — waiting for the host…</div>
+      {onChange && (
+        <button onClick={onChange} style={{ marginTop: 4, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, letterSpacing: '0.04em', color: '#8C8C9C', background: 'transparent', border: '1px solid rgba(140,140,156,0.4)', borderRadius: 999, padding: '8px 16px' }}>✎ change name</button>
+      )}
+      <div style={{ marginTop: 8, fontFamily: "'Space Grotesk',system-ui,sans-serif", fontSize: 14, color: '#8C8C9C' }}>waiting for the host…</div>
     </div>
   );
 }

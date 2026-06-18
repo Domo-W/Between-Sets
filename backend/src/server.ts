@@ -310,6 +310,15 @@ wss.on("connection", (ws) => {
         if (session.room.authorizeHost(connKey, msg.hostToken)) session.show.advance();
         break;
       }
+      case "rename": {
+        // "Change my name" — update the song's subject in place + refresh the cloud.
+        const nm = (msg.name || "").trim();
+        if (nm && msg.participantId) {
+          session.participants.rename(msg.participantId, nm);
+          session.broadcast({ type: "names", names: session.participants.names() });
+        }
+        break;
+      }
       case "host_end": {
         if (session.room.authorizeHost(connKey, msg.hostToken)) {
           session.room.markEnded();

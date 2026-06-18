@@ -85,14 +85,14 @@ export class Sim {
     return this.sims.length;
   }
 
-  /** Round boundary re-join: participants were wiped, so re-register each sim with
-   *  a FRESH intent (kept varied round to round) and re-show their name. */
-  rejoinForRound(): void {
+  /** Round boundary: give each (persisted) sim a FRESH intent so they stay in the
+   *  selection pool with varied lines. No re-join — sims keep their participant id
+   *  across rounds now (only the per-round answer is cleared), so we just re-answer. */
+  reseedForRound(): void {
     for (const s of this.sims) {
-      s.pid = this.deps.participants.join(s.name, true);
+      if (s.pid == null) continue;
       s.intent = this.freshIntent();
       this.deps.participants.setAnswer(s.pid, s.intent);
-      this.deps.broadcast({ type: "name", name: s.name });
     }
   }
 

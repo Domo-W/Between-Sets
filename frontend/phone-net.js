@@ -67,6 +67,20 @@
   }
   window.submitName = submitName;
 
+  // ---- Q1 subject. First call JOINS (idempotent); later calls (the player tapped
+  //      "change my name") RENAME the already-joined participant in place. Players
+  //      persist across rounds now, so the id is stable and the rename sticks. ----
+  function submitSubject(name) {
+    const n = String(name || '').trim().slice(0, 40);
+    if (!n) return;
+    if (!joinSent) { submitName(n); return; }   // first time → join
+    window.__participantName = n;                // already joined → rename in place
+    if (window.__participantId != null && window.Net) {
+      window.Net.send({ type: 'rename', participantId: window.__participantId, name: n });
+    }
+  }
+  window.submitSubject = submitSubject;
+
   // A new round clears everyone on the backend, so the phone must re-join: forget
   // the old (now-invalid) id and allow the next name submit to register again.
   window.__resetJoinState = function () {

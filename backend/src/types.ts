@@ -68,6 +68,7 @@ export interface ShowState {
 export type ClientMsg =
   // phone / audience
   | { type: "join"; name: string; code?: string; hostToken?: string }
+  | { type: "rename"; participantId: string; name: string } // "change my name" — update the song's subject in place
   | { type: "create_room" } // big screen → mint a lobby code
   | { type: "host_start"; hostToken?: string } // host phone → start the show
   | { type: "advance"; hostToken?: string } // host phone → end the (untimed) naming window, open the "what" gather
