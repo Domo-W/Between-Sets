@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
 import os from "node:os";
 import path from "node:path";
+import { readFile } from "node:fs/promises";
 import express from "express";
 import archiver from "archiver";
 import QRCode from "qrcode";
@@ -184,6 +185,42 @@ app.get("/qr", async (req, res) => {
     res.type("image/svg+xml").send(svg);
   } catch {
     res.status(500).send("qr error");
+  }
+});
+// Per-set link previews: when a crawler (iMessage/Slack/social) fetches a playlist
+// share URL (/phone-live.html?set=<id>), inject set-specific Open Graph tags so each
+// shared playlist shows its OWN date + track list instead of an identical generic
+// card. Humans get the same page (the client reads ?set= as before) — only the
+// <head> meta differs. No ?set= → falls through to the normal static file.
+app.get("/phone-live.html", async (req, res, next) => {
+  const setId = typeof req.query.set === "string" ? Number(req.query.set) : NaN;
+  if (!Number.isFinite(setId)) return next();
+  try {
+    const set = await findSetSongs(setId);
+    if (!set || set.length === 0) return next();
+    const when = new Date(set[0]!.createdAt).toLocaleString("en-US", {
+      timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+    });
+    const titles = set.map((s) => s.title || s.name);
+    const shown = titles.slice(0, 3).join(" · ");
+    const more = titles.length > 3 ? ` +${titles.length - 3} more` : "";
+    const ogTitle = `Between Sets · ${when}`;
+    const ogDesc = `${shown}${more} — ${set.length} track${set.length === 1 ? "" : "s"}`;
+    const ogUrl = publicJoinUrl(req) + "?set=" + setId;
+    const esc = (s: string) =>
+      s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    let html = await readFile(path.join(frontendDir, "phone-live.html"), "utf8");
+    html = html
+      .replace(/(<title>)[^<]*(<\/title>)/, `$1${esc(ogTitle)}$2`)
+      .replace(/(property="og:title" content=")[^"]*(")/, `$1${esc(ogTitle)}$2`)
+      .replace(/(property="og:description" content=")[^"]*(")/, `$1${esc(ogDesc)}$2`)
+      .replace(/(property="og:url" content=")[^"]*(")/, `$1${esc(ogUrl)}$2`)
+      .replace(/(name="twitter:title" content=")[^"]*(")/, `$1${esc(ogTitle)}$2`)
+      .replace(/(name="twitter:description" content=")[^"]*(")/, `$1${esc(ogDesc)}$2`);
+    res.type("html").send(html);
+  } catch (err) {
+    console.error("[og] playlist preview failed:", (err as Error).message);
+    next();
   }
 });
 app.use(express.static(frontendDir));
