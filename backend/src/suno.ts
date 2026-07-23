@@ -22,7 +22,6 @@ export interface GenOpts {
 export interface SunoStatus {
   id: string;
   status: "submitted" | "queued" | "streaming" | "complete" | "error" | string;
-  audioUrl: string; // "" until streaming/complete
   error: string | null;
 }
 
@@ -67,12 +66,29 @@ export async function submitGeneration(opts: GenOpts): Promise<string> {
   return data.id;
 }
 
-/** One status poll. */
+/** One status poll. The status response carries status + metadata only — NOT a
+ *  playable/downloadable URL (Suno dropped `audio_url`). Reach the audio via
+ *  `mintPlaybackUrl` once status is "streaming" or "complete". */
 export async function getStatus(id: string): Promise<SunoStatus> {
   const res = await sunoFetch(`/v0/audio/${id}`);
   if (!res.ok) throw new Error(`Suno poll ${res.status}: ${await safeBody(res)}`);
-  const d = (await res.json()) as { id: string; status: string; audio_url?: string; error?: string | null };
-  return { id: d.id, status: d.status, audioUrl: d.audio_url || "", error: d.error ?? null };
+  const d = (await res.json()) as { id: string; status: string; error?: string | null };
+  return { id: d.id, status: d.status, error: d.error ?? null };
+}
+
+/**
+ * Mint a short-lived, clip-scoped playback URL. The returned URL embeds its own
+ * token (`?t=<token>`), so it plays directly in a browser `<audio>` WITHOUT the API
+ * key AND our server can fetch the same URL to re-host the audio — no Authorization
+ * header needed either way. This replaces the old `audio_url` field, which Suno
+ * removed from the status response. Valid once the clip is servable (streaming/complete).
+ */
+export async function mintPlaybackUrl(id: string): Promise<string> {
+  const res = await sunoFetch(`/v0/audio/${id}/playback-token`, { method: "POST" });
+  if (!res.ok) throw new Error(`Suno playback-token ${res.status}: ${await safeBody(res)}`);
+  const d = (await res.json()) as { url?: string };
+  if (!d.url) throw new Error(`Suno playback-token: no url in response`);
+  return d.url;
 }
 
 export interface GenerateResult {
@@ -138,15 +154,18 @@ async function submitAndPoll(
     const s = await getStatus(id);
     if (s.status === "error") throw new Error(`Suno error for ${id}: ${s.error ?? "unknown"}`);
 
-    if (s.audioUrl && !playableUrl) {
-      playableUrl = s.audioUrl;
+    // Audio is servable at "streaming" (live progressive) and "complete" (final file).
+    // Mint the playback URL the first time we see either, so the stage can start
+    // immediately; the same clip-scoped URL is what the server re-hosts durably.
+    if ((s.status === "streaming" || s.status === "complete") && !playableUrl) {
+      playableUrl = await mintPlaybackUrl(id);
       msToPlayable = Date.now() - t0;
-      cb.onPlayable?.(s.audioUrl, s.status);
+      cb.onPlayable?.(playableUrl, s.status);
     }
     if (s.status === "complete") {
       return {
-        playableUrl: playableUrl || s.audioUrl,
-        finalUrl: s.audioUrl,
+        playableUrl,
+        finalUrl: playableUrl, // self-authorizing /stream URL; songStore.save re-hosts it
         msToPlayable: msToPlayable || Date.now() - t0,
         msToComplete: Date.now() - t0,
       };
