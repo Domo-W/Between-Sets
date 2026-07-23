@@ -33,7 +33,10 @@
     const el = new Audio();
     el.src = song.streamUrl;
     el.preload = "auto";
-    el.crossOrigin = "anonymous";
+    // NO crossOrigin: we only ramp .volume (no Web Audio / no sample reads), so a
+    // plain no-cors <audio> plays cross-origin media fine. Setting crossOrigin here
+    // would demand CORS headers the Suno /stream endpoint does NOT send → the element
+    // errors and the stage goes silent. Keep it off (matches this file's "CORS-proof").
     el.loop = true; // never gap; crossfade replaces it
     el.volume = 0;
     // Mirror the REAL element state to the dashboard the instant it changes — by
